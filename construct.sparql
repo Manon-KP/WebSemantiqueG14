@@ -1,0 +1,71 @@
+PREFIX rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX schema:  <https://schema.org/>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+PREFIX geo:     <http://www.w3.org/2003/01/geo/wgs84_pos#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX xsd:     <http://www.w3.org/2001/XMLSchema#>
+PREFIX ex:      <http://example.org/tournages-paris/>
+PREFIX apf: <http://jena.apache.org/ARQ/property#>
+
+CONSTRUCT {
+  ?tournage a schema:Event ;
+      dcterms:identifier ?a ;
+      schema:location ?lieu ;
+      schema:about ?oeuvre ;
+      schema:startDate ?debut ;
+      schema:endDate ?fin .
+
+  ?lieu a schema:Place ;
+      schema:address ?adresse ;
+      schema:postalCode ?h ;
+      geo:long ?long ;
+      geo:lat ?lat .
+
+  ?oeuvre a ?typeOeuvre ;
+      schema:name ?titre ;
+      schema:genre ?genre ;
+      schema:director ?realisateur ;
+      schema:producer ?producteur .
+
+  ?realisateur a foaf:Person ;
+      foaf:name ?nomReal .
+
+  ?producteur a schema:Organization ;
+      schema:name ?nomProd .
+}
+WHERE {
+
+  FILTER (REGEX(?a, "^[0-9]{4}-[0-9]+$")) # ignore la ligne d’en-tête
+
+  # IRIs
+  BIND (IRI(CONCAT(STR(ex:), "tournage/", ?a)) AS ?tournage)
+  BIND (IRI(CONCAT(STR(ex:), "lieu/", ?a)) AS ?lieu)
+  BIND (IRI(CONCAT(STR(ex:), "oeuvre/",
+        REPLACE(LCASE(?d), "[^\\p{L}\\p{N}]+", "-"))) AS ?oeuvre)  # remplace tout ce qui n'est pas une lettre (\p{L}) ou un chiffre (\p{N}) par un tiret
+  BIND (IRI(CONCAT(STR(ex:), "organisation/",
+        REPLACE(LCASE(?f), "[^\\p{L}\\p{N}]+", "-"))) AS ?producteur)
+
+  # Réalisateurs : plusieurs possibles, parfois vide
+  OPTIONAL {
+    ?nomBrut apf:strSplit (?e "\\s*(?:/|,|;|\\s+-\\s+|\\s+[eE][tT]\\s+)\\s*") .
+    BIND (REPLACE(STR(?nomBrut), "\\s+", " ") AS ?nomReal)
+    FILTER (?nomReal != "")
+    BIND (IRI(CONCAT(STR(ex:), "personne/",
+          REPLACE(LCASE(?nomReal), "[^\\p{L}\\p{N}]+", "-"))) AS ?realisateur)
+  }
+
+  # Littéraux typés
+  BIND (STRLANG(?d, "fr") AS ?titre)
+  BIND (STRLANG(?c, "fr") AS ?genre)
+  BIND (STRLANG(REPLACE(STR(?g), "[\\s\u00A0]+", " "), "fr") AS ?adresse) # remplace toute suite d’espaces ou d’espaces insécables par un seul espace normal
+  BIND (STR(?f) AS ?nomProd)
+  BIND (STRDT(?i, xsd:date) AS ?debut)
+  BIND (STRDT(?j, xsd:date) AS ?fin)
+  BIND (STRDT(?k, xsd:decimal) AS ?long)
+  BIND (STRDT(?l, xsd:decimal) AS ?lat)
+
+  # Type de l'œuvre
+  BIND (IF(CONTAINS(?c, "Web"), schema:CreativeWorkSeries, # pour Série Web
+      IF(CONTAINS(?c, "Série"), schema:TVSeries, # pour Série TV
+      schema:Movie)) AS ?typeOeuvre) # pour Téléfilm et Long métrage
+}
