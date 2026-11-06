@@ -1,35 +1,34 @@
 # Étape 1
 # Requête 1 : Les arrondissements les plus filmés
 
-PREFIX schema: <https://schema.org/>
+PREFIX dbo: <http://dbpedia.org/ontology/>
 
 SELECT ?arrondissement (COUNT(?tournage) AS ?nbTournages)
 WHERE {
-  ?tournage a schema:Event ;
-            schema:location ?lieu .
-  ?lieu schema:postalCode ?cp .
-  FILTER (STRSTARTS(?cp, "75"))
-  BIND (IF(?cp = "75116", "75016", ?cp) AS ?arrondissement) # le 16e a 2 adresses
+  ?tournage a dbo:Event ;
+            dbo:place ?lieu .
+  ?lieu dbo:postalCode ?cp .
+  
+  FILTER (STRSTARTS(STR(?cp), "75")) 
+  BIND (IF(STR(?cp) = "75116", "75016", STR(?cp)) AS ?arrondissement) 
 }
 GROUP BY ?arrondissement
 ORDER BY DESC(?nbTournages)
 
 # Requête 2 : Tournages de la tour Eiffel
-PREFIX schema: <https://schema.org/>
-PREFIX geo:    <http://www.w3.org/2003/01/geo/wgs84_pos#>
+PREFIX dbo: <http://dbpedia.org/ontology/>
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
 
-SELECT ?oeuvre
-       (MIN(?titre) AS ?titreOeuvre)
-       (COUNT(DISTINCT ?tournage) AS ?nbTournagesAutourEiffel)
+SELECT ?nomRealisateur (COUNT(DISTINCT ?cp) AS ?nbArrondissementsExplores) (COUNT(?tournage) AS ?nbTournagesTotal)
 WHERE {
-  ?tournage schema:location ?lieu ;
-            schema:about ?oeuvre .
-  ?lieu geo:lat ?lat ;
-        geo:long ?long .
-  ?oeuvre schema:name ?titre .
-  FILTER (?lat > 48.855 && ?lat < 48.862 && ?long > 2.290 && ?long < 2.299)
+  ?tournage dbo:work ?oeuvre ;
+            dbo:place ?lieu .
+  ?oeuvre dbo:director ?realisateur .
+  ?realisateur foaf:name ?nomRealisateur .
+  
+  # On descend du lieu vers le code postal
+  ?lieu dbo:postalCode ?cp .
 }
-GROUP BY ?oeuvre
-ORDER BY DESC(?nbTournagesAutourEiffel)
+GROUP BY ?nomRealisateur
+ORDER BY DESC(?nbArrondissementsExplores)
 LIMIT 10
-
