@@ -1,37 +1,46 @@
 PREFIX rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX schema:  <https://schema.org/>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX geo:     <http://www.w3.org/2003/01/geo/wgs84_pos#>
 PREFIX dcterms: <http://purl.org/dc/terms/>
 PREFIX xsd:     <http://www.w3.org/2001/XMLSchema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+PREFIX dbo:     <http://dbpedia.org/ontology/>
+PREFIX gn:      <http://www.geonames.org/ontology#>
+PREFIX schema:  <https://schema.org/>
 PREFIX ex:      <http://example.org/tournages-paris/>
-PREFIX apf: <http://jena.apache.org/ARQ/property#>
+PREFIX apf:     <http://jena.apache.org/ARQ/property#>
 
 CONSTRUCT {
-  ?tournage a schema:Event ;
+  # Tournage de l'œuvre
+  ?tournage a dbo:Event ;
       dcterms:identifier ?a ;
-      schema:location ?lieu ;
-      schema:about ?oeuvre ;
-      schema:startDate ?debut ;
-      schema:endDate ?fin .
+      dbo:place ?lieu ;
+      dbo:work ?oeuvre ;
+      dbo:startDate ?debut ;
+      dbo:endDate ?fin .
 
-  ?lieu a schema:Place ;
-      schema:address ?adresse ;
-      schema:postalCode ?h ;
+  # Lieu de tournage
+  ?lieu a gn:Feature, dbo:Place ;
+      rdfs:label ?adresse ;
+      dbo:postalCode ?h ;
       geo:long ?long ;
-      geo:lat ?lat .
+      geo:lat ?lat ;
+      dbo:city <http://dbpedia.org/resource/Paris> . # Paris comme point d'ancrage
 
+  # Oeuvre
   ?oeuvre a ?typeOeuvre ;
-      schema:name ?titre ;
-      schema:genre ?genre ;
-      schema:director ?realisateur ;
-      schema:producer ?producteur .
+      dcterms:title ?titre ;
+      dbo:genre ?genre ;
+      dbo:director ?realisateur ;
+      dbo:producer ?producteur .
 
+  # Réalisateur
   ?realisateur a foaf:Person ;
       foaf:name ?nomReal .
 
-  ?producteur a schema:Organization ;
-      schema:name ?nomProd .
+  # Producteur
+  ?producteur a foaf:Organization ;
+      foaf:name ?nomProd .
 }
 WHERE {
 
@@ -47,11 +56,15 @@ WHERE {
 
   # Réalisateurs : plusieurs possibles, parfois vide
   OPTIONAL {
-    ?nomBrut apf:strSplit (?e "\\s*(?:/|,|;|\\s+-\\s+|\\s+[eE][tT]\\s+)\\s*") .
-    BIND (REPLACE(STR(?nomBrut), "\\s+", " ") AS ?nomReal)
-    FILTER (?nomReal != "")
-    BIND (IRI(CONCAT(STR(ex:), "personne/",
-          REPLACE(LCASE(?nomReal), "[^\\p{L}\\p{N}]+", "-"))) AS ?realisateur)
+    ?nomBrut apf:strSplit (?e "\\s*(?:/|,|;|\\s+-\\s+|\\s+[eE][tT]\\s+)\\s*") . # sépare les noms des réalisateurs
+    
+    # nettoie le(s) nom(s)
+    BIND (REPLACE(STR(?nomBrut), "\\s+", " ") AS ?nomPropre)
+    FILTER (?nomPropre != "")
+    BIND (UCASE(?nomPropre) AS ?nomReal)
+    
+    # IRI
+    BIND (IRI(CONCAT(STR(ex:), "personne/", REPLACE(LCASE(?nomPropre), "[^\\p{L}\\p{N}]+", "-"))) AS ?realisateur)
   }
 
   # Littéraux typés
@@ -65,7 +78,10 @@ WHERE {
   BIND (STRDT(?l, xsd:decimal) AS ?lat)
 
   # Type de l'œuvre
-  BIND (IF(CONTAINS(?c, "Web"), schema:CreativeWorkSeries, # pour Série Web
-      IF(CONTAINS(?c, "Série"), schema:TVSeries, # pour Série TV
-      schema:Movie)) AS ?typeOeuvre) # pour Téléfilm et Long métrage
+  BIND (
+    IF(CONTAINS(?c, "Web"), schema:CreativeWorkSeries, # pour Série Web
+    IF(CONTAINS(?c, "Série"), dbo:TelevisionSeries, # pour Série TV
+    IF(CONTAINS(?c, "Téléfilm"), dbo:TelevisionShow, # pour Téléfilm
+    dbo:Film ))) AS ?typeOeuvre # Par défaut pour Long Métrage
+  )
 }
