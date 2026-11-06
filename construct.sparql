@@ -1,37 +1,49 @@
 PREFIX rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX schema:  <https://schema.org/>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX geo:     <http://www.w3.org/2003/01/geo/wgs84_pos#>
 PREFIX dcterms: <http://purl.org/dc/terms/>
 PREFIX xsd:     <http://www.w3.org/2001/XMLSchema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+PREFIX dbo:     <http://dbpedia.org/ontology/>
+PREFIX gn:      <http://www.geonames.org/ontology#>
+PREFIX schema:  <https://schema.org/>
 PREFIX ex:      <http://example.org/tournages-paris/>
-PREFIX apf: <http://jena.apache.org/ARQ/property#>
+PREFIX apf:     <http://jena.apache.org/ARQ/property#>
 
 CONSTRUCT {
-  ?tournage a schema:Event ;
+  # Tournage de l'œuvre
+  ?tournage a dbo:Event ;
       dcterms:identifier ?a ;
-      schema:location ?lieu ;
+      dbo:place ?lieu ;
       schema:about ?oeuvre ;
-      schema:startDate ?debut ;
-      schema:endDate ?fin .
+      dbo:startDate ?debut ;
+      dbo:endDate ?fin .
 
-  ?lieu a schema:Place ;
-      schema:address ?adresse ;
-      schema:postalCode ?h ;
+  # Lieu de tournage
+  ?lieu a gn:Feature, dbo:Place ;
+      rdfs:label ?adresse ;
+      dbo:postalCode ?h ;
       geo:long ?long ;
-      geo:lat ?lat .
+      geo:lat ?lat ;
+      dbo:city ?ville .
 
+  # Oeuvre
   ?oeuvre a ?typeOeuvre ;
-      schema:name ?titre ;
-      schema:genre ?genre ;
-      schema:director ?realisateur ;
-      schema:producer ?producteur .
+      dcterms:title ?titre ;
+      dbo:genre ?genreIRI ;
+      dbo:director ?realisateur ;
+      dbo:producer ?producteur .
+  
+   ?genreIRI a dbo:Genre ;
+      rdfs:label ?genre .
 
+  # Réalisateur
   ?realisateur a foaf:Person ;
       foaf:name ?nomReal .
 
-  ?producteur a schema:Organization ;
-      schema:name ?nomProd .
+  # Producteur
+  ?producteur a foaf:Organization ;
+      foaf:name ?nomProd .
 }
 WHERE {
 
@@ -44,15 +56,32 @@ WHERE {
         REPLACE(LCASE(?d), "[^\\p{L}\\p{N}]+", "-"))) AS ?oeuvre)  # remplace tout ce qui n'est pas une lettre (\p{L}) ou un chiffre (\p{N}) par un tiret
   BIND (IRI(CONCAT(STR(ex:), "organisation/",
         REPLACE(LCASE(?f), "[^\\p{L}\\p{N}]+", "-"))) AS ?producteur)
+   BIND (IRI(CONCAT(STR(ex:), "genre/",
+        REPLACE(LCASE(?c), "[^\\p{L}\\p{N}]+", "-"))) AS ?genreIRI)
 
   # Réalisateurs : plusieurs possibles, parfois vide
   OPTIONAL {
-    ?nomBrut apf:strSplit (?e "\\s*(?:/|,|;|\\s+-\\s+|\\s+[eE][tT]\\s+)\\s*") .
-    BIND (REPLACE(STR(?nomBrut), "\\s+", " ") AS ?nomReal)
-    FILTER (?nomReal != "")
-    BIND (IRI(CONCAT(STR(ex:), "personne/",
-          REPLACE(LCASE(?nomReal), "[^\\p{L}\\p{N}]+", "-"))) AS ?realisateur)
+    ?nomBrut apf:strSplit (?e "\\s*(?:/|,|;|\\s+-\\s+|\\s+[eE][tT]\\s+)\\s*") . # sépare les noms des réalisateurs
+    
+    # nettoie le(s) nom(s)
+    BIND (REPLACE(STR(?nomBrut), "\\s+", " ") AS ?nomPropre)
+    FILTER (?nomPropre != "")
+    BIND (UCASE(?nomPropre) AS ?nomReal)
+    
+    # IRI
+    BIND (IRI(CONCAT(STR(ex:), "personne/", REPLACE(LCASE(?nomPropre), "[^\\p{L}\\p{N}]+", "-"))) AS ?realisateur)
   }
+
+  # Villes : Paris ou communes de banlieue spécifiques
+  BIND (
+    IF(STRSTARTS(STR(?h), "75"), IRI("http://dbpedia.org/resource/Paris"),
+    IF(STR(?h) = "94320", IRI("http://dbpedia.org/resource/Thiais"),
+    IF(STR(?h) = "93500", IRI("http://dbpedia.org/resource/Pantin"),
+    IF(STR(?h) = "93320", IRI("http://dbpedia.org/resource/Les_Pavillons-sous-Bois"),
+    IF(STR(?h) = "92220", IRI("http://dbpedia.org/resource/Bagneux,_Hauts-de-Seine"),
+    IF(STR(?h) = "92170", IRI("http://dbpedia.org/resource/Vanves"),
+    ?absent)))))) AS ?ville
+  )
 
   # Littéraux typés
   BIND (STRLANG(?d, "fr") AS ?titre)
@@ -65,7 +94,9 @@ WHERE {
   BIND (STRDT(?l, xsd:decimal) AS ?lat)
 
   # Type de l'œuvre
-  BIND (IF(CONTAINS(?c, "Web"), schema:CreativeWorkSeries, # pour Série Web
-      IF(CONTAINS(?c, "Série"), schema:TVSeries, # pour Série TV
-      schema:Movie)) AS ?typeOeuvre) # pour Téléfilm et Long métrage
+  BIND (
+    IF(CONTAINS(?c, "Web"), dbo:Work, # Série Web
+    IF(CONTAINS(?c, "Série") || CONTAINS(?c, "Téléfilm"), dbo:TelevisionShow, # Série TV et Téléfilm
+    dbo:Film)) AS ?typeOeuvre # Long métrage
+  )
 }
