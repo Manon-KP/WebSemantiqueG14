@@ -1,35 +1,49 @@
 # Étape 1
 # Requête 1 : Les arrondissements les plus filmés
 
-PREFIX schema: <https://schema.org/>
+PREFIX dbo: <http://dbpedia.org/ontology/>
+PREFIX dbr: <http://dbpedia.org/resource/>
 
 SELECT ?arrondissement (COUNT(?tournage) AS ?nbTournages)
 WHERE {
-  ?tournage a schema:Event ;
-            schema:location ?lieu .
-  ?lieu schema:postalCode ?cp .
-  FILTER (STRSTARTS(?cp, "75"))
-  BIND (IF(?cp = "75116", "75016", ?cp) AS ?arrondissement) # le 16e a 2 adresses
+  ?tournage a dbo:Event ;
+            dbo:place ?lieu .
+
+  ?lieu dbo:city dbr:Paris ;
+        dbo:postalCode ?cp .
+
+  BIND (IF(STR(?cp) = "75116", "75016", STR(?cp)) AS ?arrondissement) 
 }
 GROUP BY ?arrondissement
 ORDER BY DESC(?nbTournages)
 
-# Requête 2 : Tournages de la tour Eiffel
+# Requête 2 : Moyenne de tournages par an pour chaque genre
+PREFIX dbo:    <http://dbpedia.org/ontology/>
+PREFIX dbr:    <http://dbpedia.org/resource/>
+PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX schema: <https://schema.org/>
-PREFIX geo:    <http://www.w3.org/2003/01/geo/wgs84_pos#>
 
-SELECT ?oeuvre
-       (MIN(?titre) AS ?titreOeuvre)
-       (COUNT(DISTINCT ?tournage) AS ?nbTournagesAutourEiffel)
+SELECT ?nomGenre (AVG(?nbTournagesParAn) AS ?moyenneTournagesParAn)
 WHERE {
-  ?tournage schema:location ?lieu ;
-            schema:about ?oeuvre .
-  ?lieu geo:lat ?lat ;
-        geo:long ?long .
-  ?oeuvre schema:name ?titre .
-  FILTER (?lat > 48.855 && ?lat < 48.862 && ?long > 2.290 && ?long < 2.299)
-}
-GROUP BY ?oeuvre
-ORDER BY DESC(?nbTournagesAutourEiffel)
-LIMIT 10
+  # Total des tournages par genre et par année
+  {
+    SELECT ?genreIRI ?nomGenre ?annee (COUNT(?tournage) AS ?nbTournagesParAn)
+    WHERE {
+      ?tournage a dbo:Event ;
+                dbo:startDate ?debut ;
+                schema:about ?oeuvre ;
+                dbo:place ?lieu .
 
+      ?lieu dbo:city dbr:Paris .
+
+      ?oeuvre dbo:genre ?genreIRI .
+      ?genreIRI rdfs:label ?nomGenre .
+
+      BIND (YEAR(?debut) AS ?annee)
+    }
+    GROUP BY ?genreIRI ?nomGenre ?annee
+  }
+}
+# Moyenne annuelle par genre
+GROUP BY ?genreIRI ?nomGenre
+ORDER BY DESC(?moyenneTournagesParAn)
