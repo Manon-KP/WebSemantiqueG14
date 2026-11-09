@@ -17,4 +17,4 @@ tarql --delimiter ";" --no-header-row construct.sparql lieux-de-tournage-a-paris
 
 ## Vocabulaires utilisés
 
-schema.org, FOAF, WGS84 geo, Dublin Core
+schema.org, FOAF, WGS84 geo, Dublin Core, DBpedia
